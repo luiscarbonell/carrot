@@ -5,7 +5,6 @@ var Connection = require('./connection');
 var config = require('../config');
 var Node = require('./node');
 
-
 // Easier variable naming
 var mutation = methods.mutation;
 
@@ -1808,7 +1807,6 @@ Network.crossOver = function (network1, network2, equal) {
 
 module.exports = Network;
 
-
 // Easier variable naming
 var selection = methods.selection;
 
@@ -1841,47 +1839,54 @@ var selection = methods.selection;
 *
 * @prop {number} generation A count of the generations
 */
-function Neat (input, output, fitness, options) {
-  this.input = input; // The input size of the networks
-  this.output = output; // The output size of the networks
-  this.fitness = fitness; // The fitness function to evaluate the networks
-
-  // Configure options
-  options = options || {};
-  this.equal = options.equal || true;
-  this.clear = options.clear || false;
-  this.popsize = options.popsize || 50;
-  this.elitism = options.elitism || 1;
-  this.provenance = options.provenance || 0;
-  this.mutationRate = options.mutationRate || 0.4;
-  this.mutationAmount = options.mutationAmount || 1;
-
-  this.fitnessPopulation = options.fitnessPopulation || false;
-
-  this.selection = options.selection || methods.selection.POWER;
-  this.crossover = options.crossover || [
+function Neat (input, output, fitness, {
+  equal = true,
+  clear = false,
+  popsize = 50,
+  elitism = 1,
+  provenance = 0,
+  mutationRate = 0.4,
+  mutationAmount = 1,
+  fitnessPopulation = false,
+  selection = methods.selection.POWER,
+  crossover = [
     methods.crossover.SINGLE_POINT,
     methods.crossover.TWO_POINT,
     methods.crossover.UNIFORM,
     methods.crossover.AVERAGE
-  ];
-  this.mutation = options.mutation || methods.mutation.FFW;
-  this.efficientMutation = options.efficientMutation || false;
+  ],
+  mutation = methods.mutation.FFW,
+  efficientMutation = true,
+  template = (new Network(input, output)),
+  maxNodes = Infinity,
+  maxConns = Infinity,
+  maxGates = Infinity
+} = {}) {
+  // Custom mutation selection function if given, should not be bound to this... will fix.
+  this.selectMutationMethod = typeof mutationSelection === 'function' ? mutationSelection.bind(this) : this.selectMutationMethod;
+  
+  /**
+  * Create the initial pool of genomes
+  *
+  * @param {Network} network
+  * @param {number} popsize
+  */
+  const createPool = function(network, popsize) {
+    return Array(popsize).fill(Network.fromJSON(network.toJSON()))
+  }
 
-  this.template = options.network || (new Network(this.input, this.output));
-
-  this.maxNodes = options.maxNodes || Infinity;
-  this.maxConns = options.maxConns || Infinity;
-  this.maxGates = options.maxGates || Infinity;
-
-  // Custom mutation selection function if given
-  this.selectMutationMethod = typeof options.mutationSelection === 'function' ? options.mutationSelection.bind(this) : this.selectMutationMethod;
-
-  // Generation counter
-  this.generation = 0;
-
-  // Initialise the genomes
-  this.createPool(this.template);
+  /** Shared state (should fix) **/
+  let population = createPool(template, popsize); // Initialise the genomes
+  let generation = 0;
+  
+  const getPool = function() {
+    return population;
+  }
+  
+  return Object.assign({}, {
+    createPool: createPool,
+    getPool: getPool
+  })
 }
 
 /**
@@ -1889,20 +1894,6 @@ function Neat (input, output, fitness, options) {
 * @private
 */
 Neat.prototype = {
-  /**
-   * Create the initial pool of genomes
-   *
-   * @param {Network} network
-   */
-  createPool: function (network) {
-    this.population = [];
-
-    for (var i = 0; i < this.popsize; i++) {
-      var copy = Network.fromJSON(network.toJSON());
-      copy.score = undefined;
-      this.population.push(copy);
-    }
-  },
 
   /**
    * Evaluates, selects, breeds and mutates population
@@ -2195,3 +2186,11 @@ Neat.prototype = {
     this.popsize = population.length;
   }
 };
+
+
+/** small test **/
+let network = new Network(2,2)
+
+let neat = new Neat(2,2)
+
+console.log(neat.getPool())
