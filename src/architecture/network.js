@@ -1263,10 +1263,10 @@ Network.prototype = {
 
     var start = Date.now();
 
-    var fitnessFunction;
+    let options.fitnessFunction;
     if (threads === 1) {
       // Create the fitness function
-      fitnessFunction = function (genome) {
+      options.fitnessFunction = function (genome, set) {
         var score = 0;
         for (var i = 0; i < amount; i++) {
           score -= genome.test(set, cost).error;
@@ -1293,7 +1293,7 @@ Network.prototype = {
         }
       }
 
-      fitnessFunction = function (population) {
+      options.fitnessFunction = function (population, set) {
         return new Promise((resolve, reject) => {
           // Create a queue
           var queue = population.slice();
@@ -1328,7 +1328,7 @@ Network.prototype = {
 
     // Intialise the NEAT instance
     options.network = this;
-    var neat = new Neat(this.input, this.output, fitnessFunction, options);
+    var neat = new Neat(this.input, this.output, options);
 
     var error = -Infinity;
     var bestFitness = -Infinity;
@@ -1839,7 +1839,7 @@ var selection = methods.selection;
 *
 * @prop {number} generation A count of the generations
 */
-function Neat (input, output, fitness, {
+function Neat (input, output, {
   equal = true,
   clear = false,
   popsize = 50,
@@ -1874,218 +1874,53 @@ function Neat (input, output, fitness, {
   const createPool = function(network, popsize) {
     return Array(popsize).fill(Network.fromJSON(network.toJSON()))
   }
-
-  /** Shared state (should fix) **/
+  
+  /***
+   *
+   * Shared state (should fix)
+   *
+   */
   let population = createPool(template, popsize); // Initialise the genomes
   let generation = 0;
   
+  /**
+   * Returns current population
+   */
   const getPool = function() {
     return population;
   }
   
-  return Object.assign({}, {
-    createPool: createPool,
-    getPool: getPool
-  })
-}
-
-/**
-* @namespace NEAT
-* @private
-*/
-Neat.prototype = {
-
   /**
-   * Evaluates, selects, breeds and mutates population
+   * Evaluates the provided population
    *
-   * @returns {Network} Fittest network
-  */
-  evolve: async function () {
-    // Check if evaluated, sort the population
-    if (typeof this.population[this.population.length - 1].score === 'undefined') {
-      await this.evaluate();
-    }
-    this.sort();
-
-    var fittest = Network.fromJSON(this.population[0].toJSON());
-    fittest.score = this.population[0].score;
-
-    var newPopulation = [];
-
-    // Elitism
-    var elitists = [];
-    for (var i = 0; i < this.elitism; i++) {
-      elitists.push(this.population[i]);
-    }
-
-    // Provenance
-    for (i = 0; i < this.provenance; i++) {
-      newPopulation.push(Network.fromJSON(this.template.toJSON()));
-    }
-
-    // Breed the next individuals
-    for (i = 0; i < this.popsize - this.elitism - this.provenance; i++) {
-      newPopulation.push(this.getOffspring());
-    }
-
-    // Replace the old population with the new population
-    this.population = newPopulation;
-    this.mutate();
-
-    this.population.push(...elitists);
-
-    // Reset the scores
-    for (i = 0; i < this.population.length; i++) {
-      this.population[i].score = undefined;
-    }
-
-    this.generation++;
-
-    return fittest;
-  },
-
-  /**
-   * Selects two genomes from the population with `getParent()`, and returns the offspring from those parents. NOTE: Population MUST be sorted
-   *
-   * @returns {Network} Child network
+   * @param {Network[]} An array of genomes, also known as a population.
    */
-  getOffspring: function () {
-    var parent1 = this.getParent();
-    var parent2 = this.getParent();
-
-    return Network.crossOver(parent1, parent2, this.equal);
-  },
-
-  /**
-   * Selects a random mutation method for a genome according to the parameters
-   *
-   * @param genome
-  */
-  selectMutationMethod: function (genome, allowedMutations, efficientMutation) {
-    
-    if(efficientMutation) {
-      let filtered = allowedMutations ? [...allowedMutations] : [...this.mutation]
-      let success = false
-      while(!success) {
-        const currentMethod = filtered[Math.floor(Math.random() * filtered.length)]
-        
-        if(currentMethod === methods.mutation.ADD_NODE && genome.nodes.length >= this.maxNodes || currentMethod === methods.mutation.ADD_CONN && genome.connections.length >= this.maxConns || currentMethod === methods.mutation.ADD_GATE && genome.gates.length >= this.maxGates) {
-          success = false
-        } else {
-          success = genome.mutate(currentMethod)
-        }
-        
-        // we're done
-        if(success || !filtered || filtered.length === 0) return
-        
-        // if not, remove the impossible method
-        filtered = filtered.filter(function(value, index, array) {
-          return value.name !== currentMethod.name
-        })
-      }
+  const evaluate = async function (population = population, fitness = fitness, fitnessPopulation = fitnessPopulation) {
+    // should rework fitness (function) to dynamically detect genome vs population
+    if (fitnessPopulation) {
+      if (clear)
+        for (let i = 0; i < population.length; i++)
+          population[i].clear();
+          
+      await fitness(population);
     } else {
-      let allowed = allowedMutations ? allowedMutations : this.mutation
-      let current = allowed[Math.floor(Math.random() * allowed.length)]
-
-      if (current === methods.mutation.ADD_NODE && genome.nodes.length >= this.maxNodes) {
-        if (config.warnings) console.warn('maxNodes exceeded!')
-        return
-      }
-  
-      if (current === methods.mutation.ADD_CONN && genome.connections.length >= this.maxConns) {
-        if (config.warnings) console.warn('maxConns exceeded!');
-        return
-      }
-  
-      if (current === methods.mutation.ADD_GATE && genome.gates.length >= this.maxGates) {
-        if (config.warnings) console.warn('maxGates exceeded!');
-        return
-      }
-  
-      return current
-    }
-  },
-
-  /**
-   * Mutates the given (or current) population
-   */
-  mutate: function () {
-    // Elitist genomes should not be included
-    for (var i = 0; i < this.population.length; i++) {
-      if (Math.random() <= this.mutationRate) {
-        for (var j = 0; j < this.mutationAmount; j++) {
-          const mutationMethod = this.selectMutationMethod(this.population[i], this.mutation, this.efficientMutation);
-          this.efficientMutation ? null : this.population[i].mutate(mutationMethod);
-        }
+      for (let i = 0; i < population.length; i++) {
+        var genome = population[i];
+        if (clear) genome.clear();
+        genome.score = await fitness(genome);
       }
     }
-  },
-
-  /**
-   * Evaluates the current population
-   */
-  evaluate: async function () {
-    var i;
-    if (this.fitnessPopulation) {
-      if (this.clear) {
-        for (i = 0; i < this.population.length; i++) {
-          this.population[i].clear();
-        }
-      }
-      await this.fitness(this.population);
-    } else {
-      for (i = 0; i < this.population.length; i++) {
-        var genome = this.population[i];
-        if (this.clear) genome.clear();
-        genome.score = await this.fitness(genome);
-      }
-    }
-  },
+  }
 
   /**
    * Sorts the population by score
-  */
-  sort: function () {
-    this.population.sort(function (a, b) {
-      return b.score - a.score;
-    });
-  },
-
-  /**
-   * Returns the fittest genome of the current population
    *
-   * @returns {Network} Current population's fittest genome
-  */
-  getFittest: function () {
-    // Check if evaluated
-    if (typeof this.population[this.population.length - 1].score === 'undefined') {
-      this.evaluate();
-    }
-    if (this.population[0].score < this.population[1].score) {
-      this.sort();
-    }
-
-    return this.population[0];
-  },
-
-  /**
-   * Returns the average fitness of the current population
-   *
-   * @returns {number} Average fitness of the current population
+   * @todo Consider swtiching native sort to lodash sort to avoid mozilla firefox issues [see here](https://stackoverflow.com/questions/45126469/native-array-prototype-sort-and-sortby-sorts-values-differently)
    */
-  getAverage: function () {
-    if (typeof this.population[this.population.length - 1].score === 'undefined') {
-      this.evaluate();
-    }
-
-    var score = 0;
-    for (var i = 0; i < this.population.length; i++) {
-      score += this.population[i].score;
-    }
-
-    return score / this.population.length;
-  },
-
+  const sort = function (population = population) {
+    population.sort(function (a, b) { return b.score - a.score; })
+  }
+  
   /**
    * Returns a genome for recombination (crossover) based on one of the [selection methods](selection) provided.
    *
@@ -2093,7 +1928,7 @@ Neat.prototype = {
    *
    * @return {Network} Selected genome for offspring generation
    */
-  getParent: function () {
+  const getParent = function () {
     var i;
     switch (this.selection) {
       case selection.POWER:
@@ -2152,8 +1987,176 @@ Neat.prototype = {
           }
         }
     }
-  },
+  }
+  
+  /**
+   * Selects a random mutation method for a genome according to the parameters
+   *
+   * @param genome
+  */
+  const selectMutationMethod = function (genome, allowedMutations, efficientMutation) {
+    
+    if(efficientMutation) {
+      let filtered = allowedMutations ? [...allowedMutations] : [...this.mutation]
+      let success = false
+      while(!success) {
+        const currentMethod = filtered[Math.floor(Math.random() * filtered.length)]
+        
+        if(currentMethod === methods.mutation.ADD_NODE && genome.nodes.length >= this.maxNodes || currentMethod === methods.mutation.ADD_CONN && genome.connections.length >= this.maxConns || currentMethod === methods.mutation.ADD_GATE && genome.gates.length >= this.maxGates) {
+          success = false
+        } else {
+          success = genome.mutate(currentMethod)
+        }
+        
+        // we're done
+        if(success || !filtered || filtered.length === 0) return
+        
+        // if not, remove the impossible method
+        filtered = filtered.filter(function(value, index, array) {
+          return value.name !== currentMethod.name
+        })
+      }
+    } else {
+      let allowed = allowedMutations ? allowedMutations : this.mutation
+      let current = allowed[Math.floor(Math.random() * allowed.length)]
 
+      if (current === methods.mutation.ADD_NODE && genome.nodes.length >= this.maxNodes) {
+        if (config.warnings) console.warn('maxNodes exceeded!')
+        return
+      }
+  
+      if (current === methods.mutation.ADD_CONN && genome.connections.length >= this.maxConns) {
+        if (config.warnings) console.warn('maxConns exceeded!');
+        return
+      }
+  
+      if (current === methods.mutation.ADD_GATE && genome.gates.length >= this.maxGates) {
+        if (config.warnings) console.warn('maxGates exceeded!');
+        return
+      }
+  
+      return current
+    }
+  }
+  
+  /**
+   * Mutates the given (or current) population
+   */
+  const mutate = function () {
+    // Elitist genomes should not be included
+    for (var i = 0; i < population.length; i++) {
+      if (Math.random() <= mutationRate) {
+        for (var j = 0; j < mutationAmount; j++) {
+          const mutationMethod = selectMutationMethod(population[i], mutation, efficientMutation);
+          efficientMutation ? null : population[i].mutate(mutationMethod);
+        }
+      }
+    }
+  }
+  
+  /**
+   * Selects two genomes from the population with `getParent()`, and returns the offspring from those parents. NOTE: Population MUST be sorted
+   *
+   * @see getParent
+   *
+   * @returns {Network} Child network
+   */
+  const getOffspring: function (getParent = getParent, equal = equal) {
+    let parent1 = getParent();
+    let parent2 = getParent();
+
+    return Network.crossOver(parent1, parent2, equal);
+  }
+  
+  /**
+   * Evaluates, selects, breeds and mutates population
+   *
+   * @see evaluate
+   * @see sort
+   *
+   * @see mutate
+   * @see Network
+   *
+   * @returns {Network} Fittest genome (network) in the population
+   */
+  const evolve = async function() {
+    // Check if evaluated, sort the population
+    if (typeof population[population.length - 1].score === 'undefined') {
+      await evaluate(population);
+    }
+    
+    sort();
+
+    let fittest = Network.fromJSON(population[0].toJSON());
+    fittest.score = population[0].score;
+
+    var newPopulation = [];
+
+    // Elitism
+    let elitists = [];
+    for (let i = 0; i < elitism; i++)
+      elitists.push(population[i]);
+
+    // Provenance
+    for (let i = 0; i < provenance; i++)
+      newPopulation.push(Network.fromJSON(template.toJSON()));
+
+    // Breed the next individuals
+    for (let i = 0; i < popsize - elitism - provenance; i++)
+      newPopulation.push(this.getOffspring());
+
+    // Replace the old population with the new population
+    population = newPopulation;
+    mutate();
+    
+    // not subject to mutation
+    population.push(...elitists);
+
+    // Reset the scores
+    for (i = 0; i < this.population.length; i++) {
+      population[i].score = undefined;
+    }
+
+    generation++;
+
+    return fittest;
+  }
+  
+  /**
+   * Returns the fittest genome of the current population
+   *
+   * @see evaluate
+   * @see sort
+   *
+   * @returns {Network} Current population's fittest genome
+  */
+  const getFittest = function (population = population, evaluate = evaluate, sort = sort) {
+    // Check if evaluated
+    if (typeof population[population.length - 1].score === 'undefined') evaluate()
+    
+    // sort if needed
+    if (population[0].score < population[1].score) sort()
+
+    return population[0];
+  }
+
+  /**
+   * Returns the average fitness of the current population
+   *
+   * @returns {number} Average fitness of the current population
+   */
+  const getAverage = function (population = population, evaluate = evaluate) {
+    if (typeof population[population.length - 1].score === 'undefined') evaluate()
+    
+    // can replace this with a reduce...
+    var score = 0;
+    for (var i = 0; i < population.length; i++) {
+      score += population[i].score;
+    }
+
+    return score / population.length;
+  }
+  
   /**
    * Export the current population to a JSON object
    *
@@ -2161,7 +2164,7 @@ Neat.prototype = {
    *
    * @return {object[]} A set of genomes (a population) represented as JSON objects.
    */
-  export: function () {
+  const export = function () {
     var json = [];
     for (var i = 0; i < this.population.length; i++) {
       var genome = this.population[i];
@@ -2169,14 +2172,14 @@ Neat.prototype = {
     }
 
     return json;
-  },
+  }
 
   /**
    * Imports population from a json. Must be an array of networks converted to JSON objects.
    *
    * @param {object[]} json set of genomes (a population) represented as JSON objects.
   */
-  import: function (json) {
+  const import = function (json) {
     var population = [];
     for (var i = 0; i < json.length; i++) {
       var genome = json[i];
@@ -2185,8 +2188,20 @@ Neat.prototype = {
     this.population = population;
     this.popsize = population.length;
   }
-};
-
+  
+  // exports (roughly speaking)
+  return Object.assign({}, {
+    createPool: createPool,
+    getPool: getPool,
+    evaluate: evaluate,
+    sort: sort,
+    getParent: getParent,
+    getOffspring: getOffSpring,
+    evolve: evolve,
+    export: export,
+    import: import
+  })
+}
 
 /** small test **/
 let network = new Network(2,2)
