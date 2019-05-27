@@ -22,6 +22,7 @@ describe('Neat', function () {
     ];
 
     var network = new Network(2, 1);
+    console.warn("About to begin AND evolving")
     var results = await network.evolve(trainingSet, {
       mutation: methods.mutation.FFW,
       equal: true,
@@ -44,6 +45,7 @@ describe('Neat', function () {
     ];
 
     var network = new Network(2, 1);
+    console.warn("About to begin XOR evolving")
     var results = await network.evolve(trainingSet, {
       mutation: methods.mutation.FFW,
       equal: true,
@@ -88,6 +90,7 @@ describe('Neat', function () {
     ];
 
     var network = new Network(2, 1);
+    console.warn("About to begin XNOR evolving")
     var results = await network.evolve(trainingSet, {
       mutation: methods.mutation.FFW,
       equal: true,

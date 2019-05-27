@@ -795,8 +795,8 @@ Network.prototype = {
    * });
    *
    */
-  train: function (set, options) {
-    if (set[0].input.length !== this.input || set[0].output.length !== this.output) {
+  train: function (dataset, options) {
+    if (dataset[0].input.length !== this.input || dataset[0].output.length !== this.output) {
       throw new Error('Dataset input/output size should be same as network input/output size!');
     }
 
@@ -821,7 +821,7 @@ Network.prototype = {
 
     var start = Date.now();
 
-    if (batchSize > set.length) {
+    if (batchSize > dataset.length) {
       throw new Error('Batch size must be smaller or equal to dataset length!');
     } else if (typeof options.iterations === 'undefined' && typeof options.error === 'undefined') {
       throw new Error('At least one of the following options must be specified: error, iterations');
@@ -835,9 +835,9 @@ Network.prototype = {
     this.dropout = dropout;
 
     if (options.crossValidate) {
-      let numTrain = Math.ceil((1 - options.crossValidate.testSize) * set.length);
-      var trainSet = set.slice(0, numTrain);
-      var testSet = set.slice(numTrain);
+      let numTrain = Math.ceil((1 - options.crossValidate.testSize) * dataset.length);
+      var trainSet = dataset.slice(0, numTrain);
+      var testSet = dataset.slice(numTrain);
     }
 
     // Loops the training process
@@ -861,13 +861,13 @@ Network.prototype = {
         error = this.test(testSet, cost).error;
         if (options.clear) this.clear();
       } else {
-        error = this._trainSet(set, batchSize, currentRate, momentum, cost);
+        error = this._trainSet(dataset, batchSize, currentRate, momentum, cost);
         if (options.clear) this.clear();
       }
 
       // Checks for options such as scheduled logs and shuffling
       if (options.shuffle) {
-        for (j, x, i = set.length; i; j = Math.floor(Math.random() * i), x = set[--i], set[i] = set[j], set[j] = x);
+        for (j, x, i = dataset.length; i; j = Math.floor(Math.random() * i), x = dataset[--i], dataset[i] = dataset[j], dataset[j] = x);
       }
 
       if (options.log && iteration % options.log === 0) {
@@ -904,7 +904,7 @@ Network.prototype = {
    *
    * @private
    *
-   * @param {Array<{input:number[], output: number[]}>} set
+   * @param {Array<{input:number[], output: number[]}>} dataset
    * @param {number} batchSize
    * @param {number} currentRate
    * @param {number} momentum
@@ -917,32 +917,32 @@ Network.prototype = {
    *
    * let example = ""
    */
-  _trainSet: function (set, batchSize, currentRate, momentum, costFunction) {
+  _trainSet: function (dataset, batchSize, currentRate, momentum, costFunction) {
     var errorSum = 0;
-    for (var i = 0; i < set.length; i++) {
-      var input = set[i].input;
-      var target = set[i].output;
+    for (var i = 0; i < dataset.length; i++) {
+      var input = dataset[i].input;
+      var target = dataset[i].output;
 
-      var update = !!((i + 1) % batchSize === 0 || (i + 1) === set.length);
+      var update = !!((i + 1) % batchSize === 0 || (i + 1) === dataset.length);
 
       var output = this.activate(input, true);
       this.propagate(currentRate, momentum, update, target);
 
       errorSum += costFunction(target, output);
     }
-    return errorSum / set.length;
+    return errorSum / dataset.length;
   },
 
   /**
    * Tests a set and returns the error and elapsed time
    *
-   * @param {Array<{input:number[],output:number[]}>} set A set of input values and ideal output values to test the network against
+   * @param {Array<{input:number[],output:number[]}>} dataset A set of input values and ideal output values to test the network against
    * @param {cost} [cost=methods.cost.MSE] The [cost function](https://en.wikipedia.org/wiki/Loss_function) used to determine network error
    *
    * @returns {{error:{number},time:{number}}} A summary object of the network's performance
    *
    */
-  test: function (set, cost = methods.cost.MSE) {
+  test: function (dataset, cost = methods.cost.MSE) {
     // Check if dropout is enabled, set correct mask
     var i;
     if (this.dropout) {
@@ -956,14 +956,14 @@ Network.prototype = {
     var error = 0;
     var start = Date.now();
 
-    for (i = 0; i < set.length; i++) {
-      let input = set[i].input;
-      let target = set[i].output;
+    for (i = 0; i < dataset.length; i++) {
+      let input = dataset[i].input;
+      let target = dataset[i].output;
       let output = this.noTraceActivate(input);
       error += cost(target, output);
     }
 
-    error /= set.length;
+    error /= dataset.length;
 
     var results = {
       error: error,
@@ -1167,7 +1167,7 @@ Network.prototype = {
    *
    * If both `iterations` and `error` options are unset, evolve will default to `iterations` as an end condition.
    *
-   * @param {Array<{input:number[],output:number[]}>} set A set of input values and ideal output values to train the network with
+   * @param {Array<{input:number[],output:number[]}>} dataset A set of input values and ideal output values to train the network with
    * @param {object} [options] Configuration options
    * @param {number} [options.iterations=1000] Set the maximum amount of iterations/generations for the algorithm to run.
    * @param {number} [options.error=0.05] Set the target error. The algorithm will stop once this target error has been reached.
@@ -1228,8 +1228,9 @@ Network.prototype = {
    *
    * execute();
    */
-  evolve: async function(set, options) {
-    if(set[0].input.length !== this.input || set[0].output.length !== this.output) {
+  evolve: async function(dataset, options) {
+    console.warn("Network.evolve called")
+    if(dataset[0].input.length !== this.input || dataset[0].output.length !== this.output) {
       throw new Error('Dataset input/output size should be same as network input/output size!');
     }
 
@@ -1262,14 +1263,17 @@ Network.prototype = {
     }
 
     var start = Date.now();
+    
+    console.log(start)
 
-    let options.fitnessFunction;
+    options.fitnessFunction = "cheese";
     if (threads === 1) {
+      console.log("Single threaded activated")
       // Create the fitness function
-      options.fitnessFunction = function (genome, set) {
+      options.fitnessFunction = function (genome, dataset) {
         var score = 0;
         for (var i = 0; i < amount; i++) {
-          score -= genome.test(set, cost).error;
+          score -= genome.test(dataset, cost).error;
         }
 
         score -= (genome.nodes.length - genome.input - genome.output + genome.connections.length + genome.gates.length) * growth;
@@ -1277,9 +1281,11 @@ Network.prototype = {
 
         return score / amount;
       };
+      console.warn("Just after creating the single-threaded fitnessFunction")
     } else {
+      console.warn("Just before serializing the dataset")
       // Serialize the dataset
-      var converted = multi.serializeDataSet(set);
+      var converted = multi.serializeDataSet(dataset);
 
       // Create workers, send datasets
       var workers = [];
@@ -1292,8 +1298,9 @@ Network.prototype = {
           workers.push(new multi.workers.browser.TestWorker(converted, cost));
         }
       }
-
-      options.fitnessFunction = function (population, set) {
+      
+      console.warn("Just before creating the multi-threaded fitnessFunction")
+      options.fitnessFunction = function (population, dataset) {
         return new Promise((resolve, reject) => {
           // Create a queue
           var queue = population.slice();
@@ -1322,19 +1329,28 @@ Network.prototype = {
           }
         });
       };
+      console.warn("Just after creating the multi-threaded fitnessFunction")
 
       options.fitnessPopulation = true;
     }
-
+    
+    console.log(options.fitnessFunction)
+    console.log(options)
+    
     // Intialise the NEAT instance
     options.network = this;
+    
+    console.log(options)
+    console.log("Just before initializing Neat")
     var neat = new Neat(this.input, this.output, options);
-
+    console.log("Just after initializing Neat")
     var error = -Infinity;
     var bestFitness = -Infinity;
     var bestGenome;
-
+    
+    console.warn("Just before entering evolve loop")
     while (error < -targetError && (options.iterations === 0 || neat.generation < options.iterations)) {
+      console.warn("Just before calling neat.evolve")
       let fittest = await neat.evolve();
       let fitness = fittest.score;
       error = fitness + (fittest.nodes.length - fittest.input - fittest.output + fittest.connections.length + fittest.gates.length) * growth;
@@ -1858,13 +1874,12 @@ function Neat (input, output, {
   mutation = methods.mutation.FFW,
   efficientMutation = true,
   template = (new Network(input, output)),
+  mutationSelection = null,
   maxNodes = Infinity,
   maxConns = Infinity,
   maxGates = Infinity
 } = {}) {
-  // Custom mutation selection function if given, should not be bound to this... will fix.
-  this.selectMutationMethod = typeof mutationSelection === 'function' ? mutationSelection.bind(this) : this.selectMutationMethod;
-  
+  console.log("Neat just initialized, fitnessFunction = " + fitnessFunction)
   /**
   * Create the initial pool of genomes
   *
@@ -1886,28 +1901,32 @@ function Neat (input, output, {
   /**
    * Returns current population
    */
-  const getPool = function() {
+  const getPopulation = function() {
     return population;
   }
   
   /**
    * Evaluates the provided population
    *
-   * @param {Network[]} An array of genomes, also known as a population.
+   * @param {boolean} fitnessPopulation
+   * @param {boolean} clear
+   * @param {Network[]} population An array of genomes, also known as a population.
+   * @param {function} fitnessFunction
+   * @param {<{input: number[], output: number[]}>} dataset Dataset
    */
-  const evaluate = async function (population = population, fitness = fitness, fitnessPopulation = fitnessPopulation) {
+  const evaluate = async function () {
     // should rework fitness (function) to dynamically detect genome vs population
     if (fitnessPopulation) {
       if (clear)
         for (let i = 0; i < population.length; i++)
           population[i].clear();
-          
-      await fitness(population);
+      
+      await fitnessFunction(population, dataset);
     } else {
       for (let i = 0; i < population.length; i++) {
         var genome = population[i];
         if (clear) genome.clear();
-        genome.score = await fitness(genome);
+        genome.score = await fitnessFunction(genome, dataset);
       }
     }
   }
@@ -1928,14 +1947,14 @@ function Neat (input, output, {
    *
    * @return {Network} Selected genome for offspring generation
    */
-  const getParent = function () {
+  const getParent = function (selection = selection, population = population, sort = sort, popsize = popsize) {
     var i;
-    switch (this.selection) {
+    switch (selection) { // note: selection & selection.POWER refer to different objects, a bit confusing, should fix
       case selection.POWER:
-        if (this.population[0].score < this.population[1].score) this.sort();
+        if (population[0].score < population[1].score) sort();
 
-        var index = Math.floor(Math.pow(Math.random(), this.selection.power) * this.population.length);
-        return this.population[index];
+        var index = Math.floor(Math.pow(Math.random(), selection.power) * population.length);
+        return population[index];
       case selection.FITNESS_PROPORTIONATE:
         // As negative fitnesses are possible
         // https://stackoverflow.com/questions/16186686/genetic-algorithm-handling-negative-fitness-values
@@ -1943,35 +1962,35 @@ function Neat (input, output, {
 
         var totalFitness = 0;
         var minimalFitness = 0;
-        for (i = 0; i < this.population.length; i++) {
-          var score = this.population[i].score;
+        for (i = 0; i < population.length; i++) {
+          var score = population[i].score;
           minimalFitness = score < minimalFitness ? score : minimalFitness;
           totalFitness += score;
         }
 
         minimalFitness = Math.abs(minimalFitness);
-        totalFitness += minimalFitness * this.population.length;
+        totalFitness += minimalFitness * population.length;
 
         var random = Math.random() * totalFitness;
         var value = 0;
 
-        for (i = 0; i < this.population.length; i++) {
-          let genome = this.population[i];
+        for (i = 0; i < population.length; i++) {
+          let genome = population[i];
           value += genome.score + minimalFitness;
           if (random < value) return genome;
         }
 
         // if all scores equal, return random genome
-        return this.population[Math.floor(Math.random() * this.population.length)];
+        return population[Math.floor(Math.random() * population.length)];
       case selection.TOURNAMENT:
-        if (this.selection.size > this.popsize) {
+        if (selection.size > popsize) {
           throw new Error('Your tournament size should be lower than the population size, please change methods.selection.TOURNAMENT.size');
         }
 
         // Create a tournament
         var individuals = [];
-        for (i = 0; i < this.selection.size; i++) {
-          let random = this.population[Math.floor(Math.random() * this.population.length)];
+        for (i = 0; i < selection.size; i++) {
+          let random = population[Math.floor(Math.random() * population.length)];
           individuals.push(random);
         }
 
@@ -1981,8 +2000,8 @@ function Neat (input, output, {
         });
 
         // Select an individual
-        for (i = 0; i < this.selection.size; i++) {
-          if (Math.random() < this.selection.probability || i === this.selection.size - 1) {
+        for (i = 0; i < selection.size; i++) {
+          if (Math.random() < selection.probability || i === selection.size - 1) {
             return individuals[i];
           }
         }
@@ -1994,15 +2013,18 @@ function Neat (input, output, {
    *
    * @param genome
   */
-  const selectMutationMethod = function (genome, allowedMutations, efficientMutation) {
-    
+  let selectMutationMethod = function (
+    genome,
+    allowedMutations = () => { return new TypeError("You must specify allowedMutations in Neat's selectMutationMethod")},
+    efficientMutation
+    ) {
     if(efficientMutation) {
-      let filtered = allowedMutations ? [...allowedMutations] : [...this.mutation]
+      let filtered = allowedMutations ? [...allowedMutations] : [...mutation]
       let success = false
       while(!success) {
         const currentMethod = filtered[Math.floor(Math.random() * filtered.length)]
         
-        if(currentMethod === methods.mutation.ADD_NODE && genome.nodes.length >= this.maxNodes || currentMethod === methods.mutation.ADD_CONN && genome.connections.length >= this.maxConns || currentMethod === methods.mutation.ADD_GATE && genome.gates.length >= this.maxGates) {
+        if(currentMethod === methods.mutation.ADD_NODE && genome.nodes.length >= maxNodes || currentMethod === methods.mutation.ADD_CONN && genome.connections.length >= maxConns || currentMethod === methods.mutation.ADD_GATE && genome.gates.length >= maxGates) {
           success = false
         } else {
           success = genome.mutate(currentMethod)
@@ -2017,20 +2039,20 @@ function Neat (input, output, {
         })
       }
     } else {
-      let allowed = allowedMutations ? allowedMutations : this.mutation
+      let allowed = allowedMutations ? allowedMutations : mutation
       let current = allowed[Math.floor(Math.random() * allowed.length)]
 
-      if (current === methods.mutation.ADD_NODE && genome.nodes.length >= this.maxNodes) {
+      if (current === methods.mutation.ADD_NODE && genome.nodes.length >= maxNodes) {
         if (config.warnings) console.warn('maxNodes exceeded!')
         return
       }
   
-      if (current === methods.mutation.ADD_CONN && genome.connections.length >= this.maxConns) {
+      if (current === methods.mutation.ADD_CONN && genome.connections.length >= maxConns) {
         if (config.warnings) console.warn('maxConns exceeded!');
         return
       }
   
-      if (current === methods.mutation.ADD_GATE && genome.gates.length >= this.maxGates) {
+      if (current === methods.mutation.ADD_GATE && genome.gates.length >= maxGates) {
         if (config.warnings) console.warn('maxGates exceeded!');
         return
       }
@@ -2038,6 +2060,10 @@ function Neat (input, output, {
       return current
     }
   }
+  
+  // check if mutationSelection was given, otherwise assign default
+  if(mutationSelection)
+    selectMutationMethod = mutationSelection
   
   /**
    * Mutates the given (or current) population
@@ -2057,11 +2083,12 @@ function Neat (input, output, {
   /**
    * Selects two genomes from the population with `getParent()`, and returns the offspring from those parents. NOTE: Population MUST be sorted
    *
-   * @see getParent
+   * @param {function} getParent
+   * @param {boolean} equal
    *
    * @returns {Network} Child network
    */
-  const getOffspring: function (getParent = getParent, equal = equal) {
+  const getOffspring = function () {
     let parent1 = getParent();
     let parent2 = getParent();
 
@@ -2071,20 +2098,25 @@ function Neat (input, output, {
   /**
    * Evaluates, selects, breeds and mutates population
    *
-   * @see evaluate
-   * @see sort
-   *
-   * @see mutate
-   * @see Network
+   * @param {Network[]} population
+   * @param {function} evaluate
+   * @param {function} sort
+   * @param {number} elitism
+   * @param {number} provenance
+   * @param {number} popsize
+   * @param {function} mutate
+   * @param {number} generation
    *
    * @returns {Network} Fittest genome (network) in the population
    */
   const evolve = async function() {
+      
     // Check if evaluated, sort the population
     if (typeof population[population.length - 1].score === 'undefined') {
       await evaluate(population);
     }
     
+    console.warn("Neat.evolve evaluate done")
     sort();
 
     let fittest = Network.fromJSON(population[0].toJSON());
@@ -2103,7 +2135,7 @@ function Neat (input, output, {
 
     // Breed the next individuals
     for (let i = 0; i < popsize - elitism - provenance; i++)
-      newPopulation.push(this.getOffspring());
+      newPopulation.push(getOffspring());
 
     // Replace the old population with the new population
     population = newPopulation;
@@ -2113,7 +2145,7 @@ function Neat (input, output, {
     population.push(...elitists);
 
     // Reset the scores
-    for (i = 0; i < this.population.length; i++) {
+    for (i = 0; i < population.length; i++) {
       population[i].score = undefined;
     }
 
@@ -2130,7 +2162,7 @@ function Neat (input, output, {
    *
    * @returns {Network} Current population's fittest genome
   */
-  const getFittest = function (population = population, evaluate = evaluate, sort = sort) {
+  const getFittest = function (population, evaluate, sort) {
     // Check if evaluated
     if (typeof population[population.length - 1].score === 'undefined') evaluate()
     
@@ -2145,7 +2177,7 @@ function Neat (input, output, {
    *
    * @returns {number} Average fitness of the current population
    */
-  const getAverage = function (population = population, evaluate = evaluate) {
+  const getAverage = function (population, evaluate) {
     if (typeof population[population.length - 1].score === 'undefined') evaluate()
     
     // can replace this with a reduce...
@@ -2164,10 +2196,10 @@ function Neat (input, output, {
    *
    * @return {object[]} A set of genomes (a population) represented as JSON objects.
    */
-  const export = function () {
+  const toJSON = function () {
     var json = [];
-    for (var i = 0; i < this.population.length; i++) {
-      var genome = this.population[i];
+    for (var i = 0; i < population.length; i++) {
+      var genome = population[i];
       json.push(genome.toJSON());
     }
 
@@ -2179,33 +2211,27 @@ function Neat (input, output, {
    *
    * @param {object[]} json set of genomes (a population) represented as JSON objects.
   */
-  const import = function (json) {
-    var population = [];
+  const fromJSON = function (json) {
+    let imported = [];
     for (var i = 0; i < json.length; i++) {
       var genome = json[i];
       population.push(Network.fromJSON(genome));
     }
-    this.population = population;
-    this.popsize = population.length;
+    population = imported;
+    popsize = imported.length;
   }
   
   // exports (roughly speaking)
   return Object.assign({}, {
-    createPool: createPool,
-    getPool: getPool,
-    evaluate: evaluate,
-    sort: sort,
-    getParent: getParent,
-    getOffspring: getOffSpring,
-    evolve: evolve,
-    export: export,
-    import: import
+    generation,
+    population,
+    createPool,
+    evaluate,
+    getParent,
+    getOffspring,
+    getAverage,
+    evolve,
+    toJSON,
+    fromJSON
   })
 }
-
-/** small test **/
-let network = new Network(2,2)
-
-let neat = new Neat(2,2)
-
-console.log(neat.getPool())
