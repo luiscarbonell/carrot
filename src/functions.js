@@ -5,10 +5,11 @@ module.exports = {
   fitness: {},
   squash: {},
   
+  // Learning Rate
   // CHECK: [Learning Rate Schedules and Adaptive Learning Rate Methods for Deep Learning](https://towardsdatascience.com/learning-rate-schedules-and-adaptive-learning-rate-methods-for-deep-learning-2c8f433990d1)
   // CHECK: [Using Learning Rate Schedules for Deep Learning Models in Python with Keras](https://machinelearningmastery.com/using-learning-rate-schedules-deep-learning-models-python-keras/)
   // CHECK: [Gradient Descent and Adaptive Learning Rates Methods](https://towardsdatascience.com/gradient-descent-algorithms-and-adaptive-learning-rate-adjustment-methods-79c701b086be)
-  learning: {
+  rate: {
     adagrad: "",
     adadelta: "",
     rmsprop: "",
@@ -17,5 +18,9 @@ module.exports = {
     momentum: "",
     nag: "",
     sgd: "", // Default
+  },
+  batching: {
+    BATCH: Infinity,
+    SGD: 1
   }
 }
