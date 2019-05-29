@@ -3,21 +3,20 @@ const Connection = require("./connection");
 function Neuron() {
   let self = this;
   
-  self.connection = {
+  self.connections = {
     incoming: [],
-    outgoing: []
+    outgoing: [],
+    self: []
   }
+  
   self.outputs = []
   
   self.connect = function(neuron, weight) {
-    // Code here...
+    
   }
   
-  /**
-   * SIGMOID: 1 / (1 + Math.exp(-x))
-   */
   self.activate = function(input) {
-    // Code here...
+    
   }
 }
 
